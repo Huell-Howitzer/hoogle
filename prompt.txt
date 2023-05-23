@@ -1,45 +1,54 @@
-You are a search engine master, a programming guru, and a computing wizard.
-I'm looking to build my own search engine that will work offline, find good
-results, and find them quickly. I already got started practicing on some
-text files.
-
-
-Please incorporate this suggestion and then show me the new file.
-Use optimized regular expressions: The current implementation uses regular expressions to split the text into words and remove punctuation. Regular expressions can be slow if used inefficiently, so using optimized regular expressions can improve the speed of text processing.
+Please update the code so that the search_results.html contains links that when
+clicked, open to the part of the file that contains the results.
 ```
 import re
 from collections import defaultdict
 from pathlib import Path
 import webbrowser
+import multiprocessing
 
 # Define a set of common words to ignore during search
-stop_words = set(["the", "and", "or", "an", "a", "in", "of", "to", "is", "for", "that", "it", "with", "on", "by", "this", "be", "as", "at", "from"])
+stop_words = {"the", "and", "or", "an", "a", "in", "of", "to", "is", "for", "that", "it", "with", "on", "by", "this", "be", "as", "at", "from"}
 
 # Define the path and name of the index file
-index_dir = "data/index.txt"
+index_path = "index_data.txt"
 
-# Index the files in the directory
+# Remove stop words from text
+def remove_stop_words(text):
+    words = re.findall(r"\w+", text.lower())
+    return " ".join(word for word in words if word not in stop_words)
+
+# Index a file
+def index_file(path):
+    index = defaultdict(set)
+    with open(path, "r") as file:
+        contents = file.read()
+        words = re.findall(r"\w+", contents.lower())
+        for word in words:
+            index[word].add(str(path))
+    return index
+
+# Index the files in the directory using multiple processes
 def index_files(directory):
-    index = defaultdict(list)
-    for path in Path(directory).rglob('*.txt'):
-        with open(path, "r") as file:
-            contents = file.read().lower().replace("\n", " ")
-            contents = re.sub(r"[^\w\s]", " ", contents)
-            contents = re.sub(r"\s+", " ", contents)
-            words = contents.split()
-            for word in words:
-                if word not in stop_words:
-                    index[word].append(str(path))
+    index = defaultdict(set)
+    pool = multiprocessing.Pool()
+    paths = (str(path) for path in Path(directory).rglob('*.txt'))
+    results = pool.map(index_file, paths)
+    pool.close()
+    for result in results:
+        for word in result:
+            index[word] |= result[word]
     return index
 
 # Read the index file
 def read_index(directory):
-    index = defaultdict(list)
-    if Path(index_dir).exists():
-        with open(index_dir, "r") as file:
+    index = defaultdict(set)
+    index_file_path = Path(directory) / index_path
+    if index_file_path.exists():
+        with open(index_file_path, "r") as file:
             for line in file:
-                word, paths = line.strip().split(" ", 1)
-                index[word] = paths.split()
+                word, paths = line.rstrip().split(" ", 1)
+                index[word] |= set(paths.split())
         return index
     else:
         print("Index not found.")
@@ -51,11 +60,11 @@ def read_index(directory):
             exit()
 
 # Create the index file
-# Create the index file
 def create_index(directory, force=False):
     index = index_files(directory)
-    if force or not Path(index_dir).exists():
-        with open(index_dir, "w") as file:
+    index_file_path = Path(directory) / index_path
+    if force or not index_file_path.exists():
+        with open(index_file_path, "w") as file:
             for word in index:
                 file.write(word + " " + " ".join(index[word]) + "\n")
         print("Index created successfully!")
@@ -64,35 +73,30 @@ def create_index(directory, force=False):
 
 # Search the indexed files and create the HTML page
 def search_and_display_files(index, query):
-    results = defaultdict(int)
-    words = re.findall(r"\b\w+\b", query.lower())
+    results = defaultdict(byte)
+    words = re.findall(r"\w+", query.lower())
     for word in words:
         if word not in stop_words and word in index:
             for path in index[word]:
                 results[path] += 1
+                if results[path] >= 255:
+                    # Stop counting this path if it already has 255 matches
+                    break
     matches = []
-    for path, count in results.items():
+    for path, count in sorted(results.items(), key=lambda item: -item[1])[:10]:
         with open(path, "r") as file:
-            contents = file.read().lower().replace("\n", " ")
-            contents = re.sub(r"[^\w\s]", " ", contents)
-            contents = re.sub(r"\s+", " ", contents)
+            contents = file.read()
             excerpt = ""
-            score = 0
             for word in words:
-                if word in contents:
-                    score += 1
-                    pos = contents.index(word)
+                # Find all occurrences of the word in the contents
+                for match in re.findall(word, contents.lower()):
+                    # Extract a substring containing the word and its surrounding context
+                    pos = contents.lower().find(match)
                     excerpt += "... " + contents[max(0, pos-20):pos+len(word)+20] + " ..."
-            if score > 0:
+            if excerpt:
                 # Add hyperlinks to the matched text
-                contents_with_links = contents
-                for word in words:
-                    if word in contents_with_links:
-                        pos = contents_with_links.index(word)
-                        href = f"file://{path}#char={pos}"
-                        contents_with_links = contents_with_links.replace(word, f"<a href='{href}'>{word}</a>")
+                contents_with_links = re.sub(fr"\b({'|'.join(map(re.escape, words))})\b", r'<a href="file://{}\#char=\g<1>">\g<1></a>', contents, flags=re.IGNORECASE)
                 matches.append((count, excerpt, path, contents_with_links))
-    matches.sort(key=lambda match: match[0], reverse=True)
     if matches:
         print("Matching files found:")
         html = "<html><head><title>Search Results</title></head><body>"
@@ -109,7 +113,6 @@ def search_and_display_files(index, query):
 # Main program loop
 if __name__ == "__main__":
     directory = input("Enter the directory containing the text files: ")
-    index_dir = Path(directory) / "index_data.txt"
     index = read_index(directory)
     while True:
         query = input("Enter the search query: ")
