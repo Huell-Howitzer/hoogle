@@ -143,7 +143,42 @@ directory_path = '/path/to/your/directory'
 sanitize_and_rename_files(directory_path)
 
 
+import os
+import argparse
 
+def get_size_summary(directory_path):
+    """
+    Get the summary of sizes for directories and files in the specified directory.
+
+    Args:
+        directory_path (str): The path of the directory to analyze.
+
+    Returns:
+        dict: A dictionary containing the summary of sizes for directories and files.
+    """
+    directory_sizes = {}
+    for root, _, files in os.walk(directory_path):
+        dir_size = sum(os.path.getsize(os.path.join(root, file)) for file in files)
+        directory_sizes[root] = dir_size
+    return directory_sizes
+
+def main():
+    """
+    Command-line program to get the summary of sizes for directories and files.
+    """
+    parser = argparse.ArgumentParser(description='Get summary of directory and file sizes.')
+    parser.add_argument('directory', type=str, help='The path to the directory to analyze.')
+    args = parser.parse_args()
+
+    directory_path = args.directory
+    summary = get_size_summary(directory_path)
+
+    print("Summary of directory and file sizes:")
+    for path, size in summary.items():
+        print(f"{path}: {size} bytes")
+
+if __name__ == "__main__":
+    main()
 
 
 
