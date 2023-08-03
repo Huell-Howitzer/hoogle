@@ -123,3 +123,27 @@ if __name__ == "__main__":
             create_index(directory, force)
             index = read_index(directory)
 ```
+
+
+
+import os
+import re
+
+def sanitize_and_rename_files(directory_path):
+    for root, _, files in os.walk(directory_path):
+        for filename in files:
+            original_filepath = os.path.join(root, filename)
+            sanitized_filename = re.sub(r'[\\/:*?"<>|()\s]', '_', filename.lower())
+            new_filepath = os.path.join(root, sanitized_filename)
+            
+            if original_filepath != new_filepath:
+                os.rename(original_filepath, new_filepath)
+
+directory_path = '/path/to/your/directory'
+sanitize_and_rename_files(directory_path)
+
+
+
+
+
+
